@@ -7,18 +7,24 @@ import json
 import math
 from typing import Any
 
-from ..base import Tool, ToolMetadata, ToolParameter
+from ..base import Tool, ToolMetadata, ToolParameter, ToolResult
 
 
-def _python_exec(code: str) -> str:
+# Python execution results don't expire (deterministic)
+PYTHON_EXEC_TTL = None
+
+
+def _python_exec(code: str) -> ToolResult:
     """Execute Python code in a sandboxed environment.
 
     Args:
         code: Python code to execute.
 
     Returns:
-        Output from the code execution.
+        ToolResult with execution output and provenance information.
     """
+    tool_name = "python_exec"
+
     safe_builtins = {
         "abs": abs,
         "all": all,
@@ -63,10 +69,22 @@ def _python_exec(code: str) -> str:
             exec(code, safe_globals)
 
         output = stdout_capture.getvalue()
-        return output.strip() if output.strip() else "代码执行完成（无输出）"
+        result_content = output.strip() if output.strip() else "代码执行完成（无输出）"
+
+        return ToolResult.from_success(
+            content=result_content,
+            tool_name=tool_name,
+            confidence=1.0,  # Deterministic computation
+            ttl_seconds=PYTHON_EXEC_TTL,
+            scope="computation",
+            metadata={
+                "code_length": len(code),
+                "has_output": bool(output.strip()),
+            },
+        )
 
     except Exception as e:
-        return f"执行错误: {type(e).__name__}: {e}"
+        return ToolResult.from_error(f"执行错误: {type(e).__name__}: {e}", tool_name)
 
 
 # Tool definitions

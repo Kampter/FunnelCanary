@@ -12,23 +12,29 @@ uv sync
 uv run python main.py "问题描述"
 ```
 
-## Architecture (v0.0.3)
+## Architecture (v0.0.4)
 
-FunnelCanary is a CLI-based AI Agent that solves problems using first principles thinking with a closed-loop approach.
+FunnelCanary is a CLI-based AI Agent that solves problems using first principles thinking with a closed-loop approach. v0.0.4 adds an anti-hallucination system based on provenance tracking.
 
 ### Core Flow
 
 ```
-main.py → ProblemSolvingAgent.solve() → Tool Calling Loop → Structured Answer
+main.py → ProblemSolvingAgent.solve() → Tool Calling Loop → Grounded Answer
 ```
 
 ### System Architecture
 
 ```
 ProblemSolvingAgent
+├── Provenance System (反幻觉系统) [v0.0.4]
+│   ├── ProvenanceRegistry  # 观测与声明注册
+│   ├── Observation         # 权威观测记录
+│   ├── Claim              # 可审计声明
+│   ├── ClaimExtractor     # 声明提取器
+│   └── GroundedAnswerGenerator  # 有据答案生成
 ├── Cognitive System (策略决策)
 │   ├── CognitiveState      # 认知状态追踪
-│   ├── StrategyGate        # 策略门控
+│   ├── StrategyGate        # 策略门控 (含观测评估)
 │   └── MinimalCommitmentPolicy  # 安全策略
 ├── Context Management (上下文管理)
 │   ├── ContextManager      # 滑动窗口管理
@@ -42,9 +48,12 @@ ProblemSolvingAgent
 │   └── SkillLoader         # 动态加载
 ├── Tool System (工具系统)
 │   ├── ToolRegistry        # 工具注册
+│   ├── ToolResult          # 带溯源的工具结果
 │   └── Tools: web_search, read_url, ask_user, python_exec
 └── Prompt System (提示词系统)
-    └── PromptBuilder       # 模块化提示词构建
+    ├── PromptBuilder       # 模块化提示词构建
+    ├── GroundingComponent  # 反幻觉提示组件
+    └── GroundedFormat      # 有据输出格式
 ```
 
 ### Key Modules
@@ -52,6 +61,7 @@ ProblemSolvingAgent
 | Module | Path | Description |
 |--------|------|-------------|
 | Agent | `src/funnel_canary/agent.py` | ProblemSolvingAgent - 核心循环 |
+| Provenance | `src/funnel_canary/provenance/` | 反幻觉溯源系统 [v0.0.4] |
 | Cognitive | `src/funnel_canary/cognitive/` | 认知状态与策略决策 |
 | Context | `src/funnel_canary/context/` | 上下文窗口管理 |
 | Memory | `src/funnel_canary/memory/` | 跨会话持久化记忆 |
@@ -60,14 +70,38 @@ ProblemSolvingAgent
 | Prompts | `src/funnel_canary/prompts/` | 模块化提示词 |
 | Config | `src/funnel_canary/config.py` | 配置管理 |
 
+### Anti-Hallucination System (v0.0.4)
+
+Based on four axioms:
+- **Axiom A**: Correctness comes from "world state" - facts must have observation support
+- **Axiom B**: World state only enters through authoritative observations (tools/user/rules)
+- **Axiom C**: From observation to conclusion must be auditable
+- **Axiom D**: Any unverifiable part must be explicitly degraded
+
+Key components:
+```python
+# Observation - records authoritative data
+Observation(content, source_type, source_id, confidence, ttl_seconds)
+
+# Claim - derived statement with provenance
+Claim(statement, claim_type, source_observations, transform_chain)
+
+# ProvenanceRegistry - central tracking
+registry.add_observation(obs)
+registry.determine_degradation_level()
+
+# GroundedAnswerGenerator - degradation logic
+generator.generate(raw_answer, registry) → GroundedAnswer
+```
+
 ### Tools Available
 
-| Tool | Function | Description |
-|------|----------|-------------|
-| `web_search` | 网络搜索 | 搜索互联网获取信息 |
-| `read_url` | 读取网页 | 获取指定URL内容 |
-| `ask_user` | 询问用户 | 向用户请求澄清信息 |
-| `python_exec` | 执行代码 | 运行Python代码并返回结果 |
+| Tool | Function | TTL | Description |
+|------|----------|-----|-------------|
+| `web_search` | 网络搜索 | 1h | 搜索互联网获取信息 |
+| `read_url` | 读取网页 | 2h | 获取指定URL内容 |
+| `ask_user` | 询问用户 | - | 向用户请求澄清信息 |
+| `python_exec` | 执行代码 | - | 运行Python代码并返回结果 |
 
 ### Configuration (via `.env`)
 
@@ -122,13 +156,29 @@ Examples:
 ### Release Process
 
 ```bash
-git tag -a v0.0.3 -m "Release v0.0.3: description"
-git push origin v0.0.3
+git tag -a v0.0.4 -m "Release v0.0.4: description"
+git push origin v0.0.4
 ```
 
 ## Version History
 
-### v0.0.3 (Current)
+### v0.0.4 (Current)
+- 反幻觉系统 (Anti-Hallucination)
+  - 溯源系统 (Provenance System)
+  - 观测追踪 (Observation Tracking)
+  - 可审计声明 (Auditable Claims)
+  - 降级机制 (Degradation Mechanism)
+- 提示词增强 (Prompt Enhancement)
+  - 事实来源原则 (Grounding Component)
+  - 有据输出格式 (Grounded Output Format)
+- 工具系统增强 (Tool System)
+  - ToolResult 带溯源
+  - TTL 配置支持
+- 认知系统增强 (Cognitive Enhancement)
+  - 观测状态追踪
+  - 基于观测的策略决策
+
+### v0.0.3
 - 稳定性测试通过 (20/20 测试用例)
 - 完善错误处理机制
 - 认知状态系统优化

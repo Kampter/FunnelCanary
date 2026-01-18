@@ -5,11 +5,12 @@ This module provides a registry-based tool system with:
 - Category-based organization
 - Skill binding support
 - OpenAI function calling schema generation
+- Provenance tracking via ToolResult
 """
 
-from .base import Tool, ToolMetadata, ToolParameter, tool
+from .base import Tool, ToolMetadata, ToolParameter, ToolResult, tool
 from .categories import COMPUTE_TOOLS, INTERACTION_TOOLS, WEB_TOOLS
-from .registry import ToolRegistry
+from .registry import ExecutionResult, ToolRegistry
 
 
 def create_default_registry() -> ToolRegistry:
@@ -35,8 +36,10 @@ __all__ = [
     "Tool",
     "ToolMetadata",
     "ToolParameter",
+    "ToolResult",
     "tool",
     "ToolRegistry",
+    "ExecutionResult",
     "create_default_registry",
     "WEB_TOOLS",
     "INTERACTION_TOOLS",

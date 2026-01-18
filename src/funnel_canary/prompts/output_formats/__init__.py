@@ -1,5 +1,12 @@
 """Output format templates."""
 
+from .grounded import (
+    DEGRADED_FORMAT_PARTIAL,
+    DEGRADED_FORMAT_REFUSE,
+    GROUNDED_FORMAT,
+    GROUNDED_FORMATS,
+)
+
 ANALYSIS_FORMAT = """
 ## 输出格式
 
@@ -74,4 +81,19 @@ OUTPUT_FORMATS = {
     "research": RESEARCH_FORMAT,
     "calculation": CALCULATION_FORMAT,
     "decomposition": DECOMPOSITION_FORMAT,
+    "grounded": GROUNDED_FORMAT,
+    "partial": DEGRADED_FORMAT_PARTIAL,
+    "refuse": DEGRADED_FORMAT_REFUSE,
 }
+
+__all__ = [
+    "ANALYSIS_FORMAT",
+    "RESEARCH_FORMAT",
+    "CALCULATION_FORMAT",
+    "DECOMPOSITION_FORMAT",
+    "GROUNDED_FORMAT",
+    "DEGRADED_FORMAT_PARTIAL",
+    "DEGRADED_FORMAT_REFUSE",
+    "OUTPUT_FORMATS",
+    "GROUNDED_FORMATS",
+]

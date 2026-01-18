@@ -1,7 +1,7 @@
 [project]
 name = "funnel-canary"
-version = "0.0.2"
-description = "AI Agent for closed-loop problem solving"
+version = "0.0.4"
+description = "AI Agent for closed-loop problem solving with anti-hallucination"
 requires-python = ">=3.11"
 dependencies = [
     "openai>=1.0.0",

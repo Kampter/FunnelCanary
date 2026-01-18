@@ -2,7 +2,29 @@
 
 from typing import Any
 
-from .base import Tool
+from .base import Tool, ToolResult
+
+
+class ExecutionResult:
+    """Result of a tool execution via registry.
+
+    Wraps the content string and optional ToolResult for provenance.
+    """
+
+    def __init__(
+        self,
+        content: str,
+        tool_result: ToolResult | None = None,
+        success: bool = True,
+    ):
+        self.content = content
+        self.tool_result = tool_result
+        self.success = success
+
+    @property
+    def observation(self):
+        """Get the observation from the tool result."""
+        return self.tool_result.observation if self.tool_result else None
 
 
 class ToolRegistry:
@@ -13,6 +35,7 @@ class ToolRegistry:
     - Tool lookup by name
     - Filtering tools by skill binding
     - Converting to OpenAI schema
+    - Provenance tracking via ToolResult
     """
 
     def __init__(self) -> None:
@@ -78,7 +101,7 @@ class ToolRegistry:
         """
         return list(self._tools.values())
 
-    def execute(self, name: str, arguments: dict[str, Any]) -> str:
+    def execute(self, name: str, arguments: dict[str, Any]) -> ExecutionResult:
         """Execute a tool by name.
 
         Args:
@@ -86,18 +109,61 @@ class ToolRegistry:
             arguments: Tool arguments.
 
         Returns:
-            Tool execution result.
+            ExecutionResult with content and optional provenance.
         """
         tool = self._tools.get(name)
         if tool is None:
-            return f"未知工具: {name}"
+            return ExecutionResult(
+                content=f"未知工具: {name}",
+                tool_result=None,
+                success=False,
+            )
 
         try:
-            return tool.execute(**arguments)
+            result = tool.execute(**arguments)
+
+            # Handle both string and ToolResult returns
+            if isinstance(result, ToolResult):
+                return ExecutionResult(
+                    content=result.content,
+                    tool_result=result,
+                    success=result.success,
+                )
+            else:
+                # Legacy string return - wrap in ExecutionResult without provenance
+                return ExecutionResult(
+                    content=str(result),
+                    tool_result=None,
+                    success=True,
+                )
+
         except TypeError as e:
-            return f"参数错误: {e}"
+            return ExecutionResult(
+                content=f"参数错误: {e}",
+                tool_result=ToolResult.from_error(f"参数错误: {e}", name),
+                success=False,
+            )
         except Exception as e:
-            return f"执行错误: {type(e).__name__}: {e}"
+            return ExecutionResult(
+                content=f"执行错误: {type(e).__name__}: {e}",
+                tool_result=ToolResult.from_error(f"{type(e).__name__}: {e}", name),
+                success=False,
+            )
+
+    def execute_simple(self, name: str, arguments: dict[str, Any]) -> str:
+        """Execute a tool and return only the content string.
+
+        Legacy method for backwards compatibility.
+
+        Args:
+            name: Tool name.
+            arguments: Tool arguments.
+
+        Returns:
+            Tool execution result as string.
+        """
+        result = self.execute(name, arguments)
+        return result.content
 
     def to_openai_schema(self, tools: list[Tool] | None = None) -> list[dict[str, Any]]:
         """Convert tools to OpenAI function calling schema.
