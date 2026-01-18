@@ -37,3 +37,6 @@ Thumbs.db
 
 # uv
 .uv/
+
+# FunnelCanary local data
+.funnel_canary/
