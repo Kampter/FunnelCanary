@@ -3,6 +3,8 @@
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
+from ..cognitive.safety import ToolRisk
+
 
 @dataclass
 class ToolParameter:
@@ -23,6 +25,7 @@ class ToolMetadata:
     category: str
     parameters: list[ToolParameter] = field(default_factory=list)
     skill_bindings: list[str] = field(default_factory=list)
+    risk_level: ToolRisk = ToolRisk.SAFE
 
     def to_openai_schema(self) -> dict[str, Any]:
         """Convert to OpenAI function calling schema."""
@@ -82,6 +85,7 @@ def tool(
     category: str,
     parameters: list[ToolParameter] | None = None,
     skill_bindings: list[str] | None = None,
+    risk_level: ToolRisk = ToolRisk.SAFE,
 ) -> Callable[[ToolExecutor], Tool]:
     """Decorator to create a tool from a function.
 
@@ -91,6 +95,7 @@ def tool(
             description="Search the web",
             category="web",
             parameters=[ToolParameter("query", "string", "Search query")],
+            risk_level=ToolRisk.SAFE,
         )
         def web_search(query: str) -> str:
             ...
@@ -103,6 +108,7 @@ def tool(
             category=category,
             parameters=parameters or [],
             skill_bindings=skill_bindings or [],
+            risk_level=risk_level,
         )
         return Tool(metadata=metadata, execute=func)
 
