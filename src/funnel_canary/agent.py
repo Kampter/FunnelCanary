@@ -6,6 +6,8 @@ from typing import Any
 
 from openai import OpenAI
 
+from .cognitive import CognitiveState, MinimalCommitmentPolicy, StrategyGate
+from .cognitive.strategy import StrategyDecision
 from .config import Config
 from .context import ContextManager, Summarizer
 from .memory import Fact, MemoryStore, SessionSummary
@@ -30,8 +32,11 @@ class ProblemSolvingAgent:
         max_iterations: int = 10,
         enable_memory: bool = True,
         enable_skills: bool = True,
+        enable_cognitive: bool = True,
         window_size: int = 10,
         token_budget: int = 8000,
+        confidence_threshold: float = 0.7,
+        stall_threshold: int = 3,
     ):
         """Initialize the agent with configuration.
 
@@ -40,8 +45,11 @@ class ProblemSolvingAgent:
             max_iterations: Maximum number of iterations to prevent infinite loops.
             enable_memory: Whether to enable persistent memory.
             enable_skills: Whether to enable skill system.
+            enable_cognitive: Whether to enable cognitive state system.
             window_size: Context window size for recent messages.
             token_budget: Approximate token budget for context.
+            confidence_threshold: Confidence threshold for strategy decisions.
+            stall_threshold: Number of stalled iterations before pivoting.
         """
         self.config = config or Config.from_env()
         self.max_iterations = max_iterations
@@ -74,6 +82,18 @@ class ProblemSolvingAgent:
         # Initialize prompt builder
         self.prompt_builder = PromptBuilder()
 
+        # Initialize cognitive system
+        self.enable_cognitive = enable_cognitive
+        if self.enable_cognitive:
+            self.strategy_gate = StrategyGate(
+                confidence_threshold=confidence_threshold,
+                stall_threshold=stall_threshold,
+            )
+            self.safety_policy = MinimalCommitmentPolicy()
+        else:
+            self.strategy_gate = None
+            self.safety_policy = None
+
         # Session tracking
         self._session_id = str(uuid.uuid4())[:8]
         self._current_skill: Skill | None = None
@@ -91,6 +111,14 @@ class ProblemSolvingAgent:
         self.context_manager.clear()
         self._current_skill = None
 
+        # Initialize cognitive state if enabled
+        cognitive_state = None
+        if self.enable_cognitive:
+            cognitive_state = CognitiveState(
+                goal_statement=problem,
+                confidence=0.3,  # Start with low confidence
+            )
+
         # Match and load skill if enabled
         if self.skill_registry:
             skill_meta = self.skill_registry.match_skill(problem)
@@ -100,7 +128,7 @@ class ProblemSolvingAgent:
                 )
 
         # Build system prompt
-        system_prompt = self._build_system_prompt(problem)
+        system_prompt = self._build_system_prompt(problem, cognitive_state)
 
         # Get memory context
         memory_context = None
@@ -117,45 +145,116 @@ class ProblemSolvingAgent:
         # Main loop
         final_answer = ""
         for iteration in range(self.max_iterations):
-            # Build messages for API call
-            messages = self.context_manager.build_messages(
-                system_prompt,
-                memory_context=memory_context,
-            )
+            try:
+                # Update cognitive state if enabled
+                if cognitive_state:
+                    cognitive_state.increment_iteration()
 
-            # Make API call
-            response = self.client.chat.completions.create(
-                model=self.config.model_name,
-                messages=messages,
-                tools=tools_schema if tools_schema else None,
-                temperature=0.7,
-            )
+                # Evaluate strategy if cognitive state enabled
+                if cognitive_state and self.strategy_gate:
+                    strategy_path = self.strategy_gate.evaluate(cognitive_state)
 
-            message = response.choices[0].message
+                    # Handle strategy decisions
+                    if strategy_path.decision == StrategyDecision.CONCLUDE:
+                        # High confidence - can conclude
+                        print(f"\n【策略】{strategy_path.reason}")
+                        # Continue to get final answer from LLM
+                    elif strategy_path.decision == StrategyDecision.DEGRADE:
+                        # Low confidence but need to output
+                        print(f"\n【策略】{strategy_path.reason}")
+                        final_answer = f"基于当前信息的部分答案（置信度: {cognitive_state.confidence:.0%}）\n\n"
+                        # Let LLM provide best current answer
+                    elif strategy_path.decision == StrategyDecision.PIVOT:
+                        print(f"\n【策略】{strategy_path.reason} - 尝试不同方法")
+                        # For now, just continue - full pivot logic can be added later
 
-            # Add to context (convert to dict for storage)
-            self.context_manager.add_message(self._message_to_dict(message))
+                # Build messages for API call
+                messages = self.context_manager.build_messages(
+                    system_prompt,
+                    memory_context=memory_context,
+                )
 
-            # Display reasoning/thinking if present
-            if message.content:
-                print(message.content)
-
-            # Check if we have tool calls to execute
-            if message.tool_calls:
-                print("\n【执行】")
-                for tool_call in message.tool_calls:
-                    result = self._execute_tool_call(tool_call)
-
-                    # Add tool result to context
-                    self.context_manager.add_tool_result(
-                        tool_call.id,
-                        result,
+                # Make API call with error handling
+                try:
+                    response = self.client.chat.completions.create(
+                        model=self.config.model_name,
+                        messages=messages,
+                        tools=tools_schema if tools_schema else None,
+                        temperature=0.7,
                     )
+                except Exception as api_error:
+                    print(f"\n【错误】API 调用失败: {str(api_error)}")
 
-            # If no tool calls and finish_reason is "stop", we have the final answer
-            if response.choices[0].finish_reason == "stop" and not message.tool_calls:
-                final_answer = message.content or ""
-                break
+                    # Update cognitive state if enabled
+                    if cognitive_state:
+                        cognitive_state.add_uncertainty(f"API error: {type(api_error).__name__}")
+
+                    # Decide whether to retry or gracefully degrade
+                    if iteration < self.max_iterations - 1:
+                        print("尝试继续...")
+                        continue
+                    else:
+                        # Last iteration - return partial answer
+                        final_answer = self._generate_partial_answer(problem, cognitive_state)
+                        break
+
+                message = response.choices[0].message
+
+                # Add to context (convert to dict for storage)
+                self.context_manager.add_message(self._message_to_dict(message))
+
+                # Display reasoning/thinking if present
+                if message.content:
+                    print(message.content)
+
+                # Check if we have tool calls to execute
+                if message.tool_calls:
+                    print("\n【执行】")
+                    for tool_call in message.tool_calls:
+                        try:
+                            result = self._execute_tool_call(tool_call)
+                        except Exception as tool_error:
+                            # Log error but continue with other tools
+                            error_msg = f"工具执行失败: {str(tool_error)}"
+                            print(f"  {error_msg}")
+                            result = error_msg
+
+                        # Add tool result to context (always add, even on error)
+                        self.context_manager.add_tool_result(
+                            tool_call.id,
+                            result,
+                        )
+
+                    # Mark progress if cognitive state enabled
+                    if cognitive_state:
+                        cognitive_state.mark_progress()
+                        # Update confidence slightly after successful tool execution
+                        cognitive_state.update_confidence(
+                            min(cognitive_state.confidence + 0.1, 0.9)
+                        )
+                else:
+                    # No tool calls - might be stalling
+                    if cognitive_state:
+                        cognitive_state.mark_stall()
+
+                # If no tool calls and finish_reason is "stop", we have the final answer
+                if response.choices[0].finish_reason == "stop" and not message.tool_calls:
+                    final_answer = message.content or ""
+                    break
+
+            except Exception as e:
+                # Catch-all for unexpected errors in the iteration
+                print(f"\n【错误】迭代 {iteration + 1} 失败: {str(e)}")
+
+                if cognitive_state:
+                    cognitive_state.add_uncertainty(f"Iteration error: {type(e).__name__}")
+
+                if iteration < self.max_iterations - 1:
+                    print("尝试继续...")
+                    continue
+                else:
+                    final_answer = self._generate_partial_answer(problem, cognitive_state)
+                    break
 
         if not final_answer:
             final_answer = "达到最大迭代次数，未能完成问题解决。"
@@ -166,11 +265,12 @@ class ProblemSolvingAgent:
 
         return final_answer
 
-    def _build_system_prompt(self, problem: str) -> str:
+    def _build_system_prompt(self, problem: str, cognitive_state: CognitiveState | None = None) -> str:
         """Build system prompt based on current state.
 
         Args:
             problem: The problem being solved.
+            cognitive_state: Optional cognitive state for context.
 
         Returns:
             Assembled system prompt.
@@ -203,6 +303,12 @@ class ProblemSolvingAgent:
             facts = self.memory.get_relevant_facts(problem, limit=3)
             if facts:
                 self.prompt_builder.with_memory(facts)
+
+        # Add cognitive context if available
+        if cognitive_state:
+            cognitive_context = cognitive_state.to_context()
+            if cognitive_context:
+                self.prompt_builder.with_cognitive_state(cognitive_context)
 
         return self.prompt_builder.build()
 
@@ -272,6 +378,47 @@ class ProblemSolvingAgent:
             ]
 
         return msg_dict
+
+    def _generate_partial_answer(
+        self,
+        problem: str,
+        cognitive_state: CognitiveState | None = None,
+    ) -> str:
+        """Generate a partial answer when errors prevent full completion.
+
+        Args:
+            problem: The original problem.
+            cognitive_state: Optional cognitive state for context.
+
+        Returns:
+            A partial answer with available information.
+        """
+        parts = ["由于遇到错误，无法完成完整的问题解决。"]
+
+        if cognitive_state:
+            parts.append(f"\n当前置信度: {cognitive_state.confidence:.0%}")
+            parts.append(f"已完成迭代: {cognitive_state.iteration_count}")
+
+            if cognitive_state.uncertainties:
+                parts.append("\n遇到的问题:")
+                for uncertainty in cognitive_state.uncertainties[-3:]:
+                    parts.append(f"  - {uncertainty}")
+
+        # Try to extract any useful information from conversation history
+        messages = self.context_manager.messages
+        assistant_contents = []
+        for msg in messages:
+            if msg.get("role") == "assistant" and msg.get("content"):
+                content = msg["content"]
+                if len(content) > 50:  # Only include substantial responses
+                    assistant_contents.append(content)
+
+        if assistant_contents:
+            parts.append("\n\n基于已收集的信息:")
+            # Include the last meaningful assistant response
+            parts.append(assistant_contents[-1][:500])
+
+        return "\n".join(parts)
 
     def _save_session_summary(self, problem: str, answer: str) -> None:
         """Save a summary of the current session.

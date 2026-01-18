@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from .base import (
     BASE_SYSTEM_PROMPT,
+    COGNITIVE_CONTEXT_TEMPLATE,
     MEMORY_CONTEXT_TEMPLATE,
     SKILL_CONTEXT_TEMPLATE,
     TOOL_GUIDANCE_TEMPLATE,
@@ -40,6 +41,7 @@ class PromptBuilder:
         self._output_format: str = "default"
         self._memory_facts: list["Fact"] = []
         self._tool_descriptions: str = ""
+        self._cognitive_context: str = ""
 
     def with_component(self, component_name: str) -> "PromptBuilder":
         """Add a prompt component.
@@ -112,6 +114,18 @@ class PromptBuilder:
         self._tool_descriptions = "\n".join(descriptions)
         return self
 
+    def with_cognitive_state(self, cognitive_context: str) -> "PromptBuilder":
+        """Add cognitive state context.
+
+        Args:
+            cognitive_context: Cognitive state context string from CognitiveState.to_context().
+
+        Returns:
+            Self for chaining.
+        """
+        self._cognitive_context = cognitive_context
+        return self
+
     def build(self) -> str:
         """Build the final system prompt.
 
@@ -146,6 +160,12 @@ class PromptBuilder:
             )
             parts.append(MEMORY_CONTEXT_TEMPLATE.format(memory_content=memory_content))
 
+        # Add cognitive context if available
+        if self._cognitive_context:
+            parts.append(
+                COGNITIVE_CONTEXT_TEMPLATE.format(cognitive_context=self._cognitive_context)
+            )
+
         # Add output format
         output_format = OUTPUT_FORMATS.get(self._output_format, OUTPUT_FORMATS["default"])
         parts.append(output_format)
@@ -163,4 +183,5 @@ class PromptBuilder:
         self._output_format = "default"
         self._memory_facts = []
         self._tool_descriptions = ""
+        self._cognitive_context = ""
         return self

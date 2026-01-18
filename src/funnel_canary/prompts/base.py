@@ -45,3 +45,10 @@ SKILL_CONTEXT_TEMPLATE = """
 
 {skill_content}
 """
+
+
+COGNITIVE_CONTEXT_TEMPLATE = """
+## 认知状态
+
+{cognitive_context}
+"""

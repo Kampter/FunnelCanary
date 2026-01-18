@@ -102,12 +102,95 @@ class ContextManager:
                 "content": f"【对话历史摘要】\n{self._summary}",
             })
 
-        # Add recent messages (within window)
+        # Add recent messages (within window), adjusted to preserve tool pairs
         window_start = max(0, len(self._messages) - self._window_size)
+        window_start = self._adjust_window_for_tool_pairs(window_start)
         for msg in self._messages[window_start:]:
             messages.append(msg)
 
+        # Validate and clean message coherence to prevent orphaned tool_results
+        messages = self._ensure_message_coherence(messages)
+
         return messages
+
+    def _adjust_window_for_tool_pairs(self, window_start: int) -> int:
+        """Adjust window_start to ensure we don't split tool_use/tool_result pairs.
+
+        If window_start would cut in the middle of a tool sequence, move it back
+        to include the assistant message with tool_calls.
+
+        Args:
+            window_start: The proposed starting index for the window.
+
+        Returns:
+            Adjusted window_start that preserves tool pairs.
+        """
+        if window_start >= len(self._messages) or window_start == 0:
+            return window_start
+
+        # Check if message at window_start is a tool_result
+        if self._messages[window_start].get("role") == "tool":
+            # Move window back to include the assistant message with tool_calls
+            for i in range(window_start - 1, -1, -1):
+                msg = self._messages[i]
+                if msg.get("role") == "assistant":
+                    if msg.get("tool_calls"):
+                        return i
+                    # Found assistant without tool_calls, stop searching
+                    break
+
+        return window_start
+
+    def _ensure_message_coherence(
+        self,
+        messages: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Remove orphaned tool_result messages that don't have a corresponding tool_use.
+
+        A tool_result is considered orphaned if there is no assistant message
+        with a matching tool_call in the preceding messages.
+
+        Args:
+            messages: List of messages to validate.
+
+        Returns:
+            Cleaned list with orphaned tool_results removed.
+        """
+        cleaned: list[dict[str, Any]] = []
+
+        for i, msg in enumerate(messages):
+            if msg.get("role") == "tool":
+                # Check if there's a matching tool_call in preceding messages
+                tool_call_id = msg.get("tool_call_id")
+                if tool_call_id and self._has_matching_tool_call(cleaned, tool_call_id):
+                    cleaned.append(msg)
+                # else: skip orphaned tool_result
+            else:
+                cleaned.append(msg)
+
+        return cleaned
+
+    def _has_matching_tool_call(
+        self,
+        messages: list[dict[str, Any]],
+        tool_call_id: str,
+    ) -> bool:
+        """Check if any assistant message has a matching tool_call.
+
+        Args:
+            messages: List of messages to search.
+            tool_call_id: The tool_call_id to match.
+
+        Returns:
+            True if a matching tool_call is found.
+        """
+        for msg in reversed(messages):
+            if msg.get("role") == "assistant":
+                tool_calls = msg.get("tool_calls", [])
+                for tc in tool_calls:
+                    if tc.get("id") == tool_call_id:
+                        return True
+        return False
 
     def _maybe_compress(self) -> None:
         """Compress history if needed."""
