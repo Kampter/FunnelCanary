@@ -12,6 +12,8 @@ from .base import (
 from .components import (
     CALCULATION_COMPONENT,
     CLARIFICATION_COMPONENT,
+    GROUNDING_COMPONENT,
+    PROVENANCE_CONTEXT_TEMPLATE,
     RESEARCH_COMPONENT,
     THINKING_COMPONENT,
 )
@@ -19,6 +21,7 @@ from .output_formats import OUTPUT_FORMATS
 
 if TYPE_CHECKING:
     from ..memory.models import Fact
+    from ..provenance import ProvenanceRegistry
     from ..skills.models import Skill
     from ..tools import ToolRegistry
 
@@ -28,11 +31,12 @@ class PromptBuilder:
 
     Assembles prompts from:
     - Base system prompt
-    - Prompt components (thinking, clarification, etc.)
+    - Prompt components (thinking, clarification, grounding, etc.)
     - Skill-specific instructions
     - Output format templates
     - Memory context
     - Tool descriptions
+    - Provenance context (for anti-hallucination)
     """
 
     def __init__(self) -> None:
@@ -42,12 +46,15 @@ class PromptBuilder:
         self._memory_facts: list["Fact"] = []
         self._tool_descriptions: str = ""
         self._cognitive_context: str = ""
+        self._grounding_enabled: bool = False
+        self._provenance_context: str = ""
 
     def with_component(self, component_name: str) -> "PromptBuilder":
         """Add a prompt component.
 
         Args:
-            component_name: One of 'thinking', 'clarification', 'research', 'calculation'.
+            component_name: One of 'thinking', 'clarification', 'research',
+                          'calculation', 'grounding'.
 
         Returns:
             Self for chaining.
@@ -57,6 +64,7 @@ class PromptBuilder:
             "clarification": CLARIFICATION_COMPONENT,
             "research": RESEARCH_COMPONENT,
             "calculation": CALCULATION_COMPONENT,
+            "grounding": GROUNDING_COMPONENT,
         }
         if component_name in components_map:
             self._components.append(components_map[component_name])
@@ -78,7 +86,8 @@ class PromptBuilder:
         """Set the output format.
 
         Args:
-            format_name: One of 'default', 'research', 'calculation', 'decomposition'.
+            format_name: One of 'default', 'research', 'calculation',
+                        'decomposition', 'grounded', 'partial', 'refuse'.
 
         Returns:
             Self for chaining.
@@ -126,6 +135,39 @@ class PromptBuilder:
         self._cognitive_context = cognitive_context
         return self
 
+    def with_grounding_enforcement(self) -> "PromptBuilder":
+        """Enable grounding enforcement for anti-hallucination.
+
+        This adds the grounding component and switches to grounded output format.
+
+        Returns:
+            Self for chaining.
+        """
+        self._grounding_enabled = True
+        # Add grounding component if not already added
+        if GROUNDING_COMPONENT not in self._components:
+            self._components.append(GROUNDING_COMPONENT)
+        # Switch to grounded output format
+        self._output_format = "grounded"
+        return self
+
+    def with_provenance_context(
+        self,
+        registry: "ProvenanceRegistry",
+        max_observations: int = 5
+    ) -> "PromptBuilder":
+        """Add provenance context from the registry.
+
+        Args:
+            registry: ProvenanceRegistry with current observations.
+            max_observations: Maximum number of observations to include.
+
+        Returns:
+            Self for chaining.
+        """
+        self._provenance_context = registry.to_context(max_observations)
+        return self
+
     def build(self) -> str:
         """Build the final system prompt.
 
@@ -160,6 +202,14 @@ class PromptBuilder:
             )
             parts.append(MEMORY_CONTEXT_TEMPLATE.format(memory_content=memory_content))
 
+        # Add provenance context if available (for grounding)
+        if self._provenance_context:
+            parts.append(
+                PROVENANCE_CONTEXT_TEMPLATE.format(
+                    provenance_context=self._provenance_context
+                )
+            )
+
         # Add cognitive context if available
         if self._cognitive_context:
             parts.append(
@@ -184,4 +234,6 @@ class PromptBuilder:
         self._memory_facts = []
         self._tool_descriptions = ""
         self._cognitive_context = ""
+        self._grounding_enabled = False
+        self._provenance_context = ""
         return self

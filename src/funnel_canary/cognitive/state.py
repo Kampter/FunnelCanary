@@ -23,6 +23,8 @@ class CognitiveState:
 
     Follows the principle of minimal tracking - only essential fields
     to enable strategy branching without over-engineering.
+
+    v0.0.4: Added observation tracking for provenance-aware decisions.
     """
 
     # Core confidence tracking
@@ -42,6 +44,11 @@ class CognitiveState:
     # Problem understanding
     goal_statement: str = ""
     current_hypothesis: str = ""
+
+    # Observation tracking (v0.0.4)
+    observation_count: int = 0
+    observation_confidence_sum: float = 0.0
+    has_tool_observations: bool = False
 
     def update_confidence(self, new_confidence: float) -> None:
         """Update overall confidence level."""
@@ -73,6 +80,22 @@ class CognitiveState:
         """Check if agent has stalled for too many iterations."""
         return self.stall_count >= threshold
 
+    def record_observation(self, confidence: float) -> None:
+        """Record a new observation (v0.0.4).
+
+        Args:
+            confidence: Confidence level of the observation.
+        """
+        self.observation_count += 1
+        self.observation_confidence_sum += confidence
+        self.has_tool_observations = True
+
+    def get_average_observation_confidence(self) -> float:
+        """Get average confidence of recorded observations."""
+        if self.observation_count == 0:
+            return 0.0
+        return self.observation_confidence_sum / self.observation_count
+
     def to_context(self) -> str:
         """
         Generate cognitive context for prompt injection.
@@ -91,6 +114,14 @@ class CognitiveState:
         if self.stall_count >= 2:
             lines.append("进展缓慢，考虑切换策略")
 
+        # v0.0.4: Add observation status
+        if self.observation_count == 0 and self.iteration_count > 0:
+            lines.append("注意：尚未获取任何观测数据")
+        elif self.observation_count > 0:
+            avg_conf = self.get_average_observation_confidence()
+            if avg_conf < 0.6:
+                lines.append(f"观测数据置信度较低 ({avg_conf:.0%})")
+
         return "\n".join(lines) if lines else ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -101,4 +132,6 @@ class CognitiveState:
             "iteration_count": self.iteration_count,
             "stall_count": self.stall_count,
             "goal_statement": self.goal_statement,
+            "observation_count": self.observation_count,
+            "average_observation_confidence": self.get_average_observation_confidence(),
         }

@@ -12,6 +12,12 @@ from .config import Config
 from .context import ContextManager, Summarizer
 from .memory import Fact, MemoryStore, SessionSummary
 from .prompts import PromptBuilder
+from .provenance import (
+    GroundedAnswerGenerator,
+    Observation,
+    ObservationType,
+    ProvenanceRegistry,
+)
 from .skills import Skill, SkillMetadata, SkillRegistry
 from .tools import ToolRegistry, create_default_registry
 
@@ -24,6 +30,7 @@ class ProblemSolvingAgent:
     - Context management with sliding window
     - Persistent memory across sessions
     - Modular prompt building
+    - Provenance tracking for anti-hallucination (v0.0.4)
     """
 
     def __init__(
@@ -33,6 +40,7 @@ class ProblemSolvingAgent:
         enable_memory: bool = True,
         enable_skills: bool = True,
         enable_cognitive: bool = True,
+        enable_grounding: bool = True,
         window_size: int = 10,
         token_budget: int = 8000,
         confidence_threshold: float = 0.7,
@@ -46,6 +54,7 @@ class ProblemSolvingAgent:
             enable_memory: Whether to enable persistent memory.
             enable_skills: Whether to enable skill system.
             enable_cognitive: Whether to enable cognitive state system.
+            enable_grounding: Whether to enable provenance tracking and grounding.
             window_size: Context window size for recent messages.
             token_budget: Approximate token budget for context.
             confidence_threshold: Confidence threshold for strategy decisions.
@@ -94,6 +103,13 @@ class ProblemSolvingAgent:
             self.strategy_gate = None
             self.safety_policy = None
 
+        # Initialize provenance system (v0.0.4)
+        self.enable_grounding = enable_grounding
+        self.provenance_registry: ProvenanceRegistry | None = None
+        self.grounded_generator: GroundedAnswerGenerator | None = None
+        if self.enable_grounding:
+            self.grounded_generator = GroundedAnswerGenerator()
+
         # Session tracking
         self._session_id = str(uuid.uuid4())[:8]
         self._current_skill: Skill | None = None
@@ -110,6 +126,19 @@ class ProblemSolvingAgent:
         # Reset context for new problem
         self.context_manager.clear()
         self._current_skill = None
+
+        # Initialize provenance registry for this session (v0.0.4)
+        if self.enable_grounding:
+            self.provenance_registry = ProvenanceRegistry()
+            # Record user input as observation
+            user_observation = Observation(
+                content=problem[:500],
+                source_type=ObservationType.USER_INPUT,
+                source_id="user",
+                confidence=0.8,  # User input has 80% confidence
+                scope="problem_statement",
+            )
+            self.provenance_registry.add_observation(user_observation)
 
         # Initialize cognitive state if enabled
         cognitive_state = None
@@ -152,7 +181,11 @@ class ProblemSolvingAgent:
 
                 # Evaluate strategy if cognitive state enabled
                 if cognitive_state and self.strategy_gate:
-                    strategy_path = self.strategy_gate.evaluate(cognitive_state)
+                    # v0.0.4: Pass provenance registry for observation-based decisions
+                    strategy_path = self.strategy_gate.evaluate(
+                        cognitive_state,
+                        provenance_registry=self.provenance_registry if self.enable_grounding else None,
+                    )
 
                     # Handle strategy decisions
                     if strategy_path.decision == StrategyDecision.CONCLUDE:
@@ -167,6 +200,10 @@ class ProblemSolvingAgent:
                     elif strategy_path.decision == StrategyDecision.PIVOT:
                         print(f"\n【策略】{strategy_path.reason} - 尝试不同方法")
                         # For now, just continue - full pivot logic can be added later
+                    elif strategy_path.decision == StrategyDecision.REQUEST_MORE_INFO:
+                        # v0.0.4: Need more observations
+                        print(f"\n【策略】{strategy_path.reason}")
+                        # Continue to let LLM call tools
 
                 # Build messages for API call
                 messages = self.context_manager.build_messages(
@@ -212,7 +249,7 @@ class ProblemSolvingAgent:
                     print("\n【执行】")
                     for tool_call in message.tool_calls:
                         try:
-                            result = self._execute_tool_call(tool_call)
+                            result = self._execute_tool_call(tool_call, cognitive_state)
                         except Exception as tool_error:
                             # Log error but continue with other tools
                             error_msg = f"工具执行失败: {str(tool_error)}"
@@ -259,6 +296,10 @@ class ProblemSolvingAgent:
         if not final_answer:
             final_answer = "达到最大迭代次数，未能完成问题解决。"
 
+        # Apply grounded answer generation if enabled (v0.0.4)
+        if self.enable_grounding:
+            final_answer = self._generate_grounded_answer(final_answer)
+
         # Save session summary if memory is enabled
         if self.memory:
             self._save_session_summary(problem, final_answer)
@@ -280,6 +321,13 @@ class ProblemSolvingAgent:
         # Add tool descriptions
         self.prompt_builder.with_tools(self.tool_registry)
 
+        # Add grounding enforcement if enabled (v0.0.4)
+        if self.enable_grounding:
+            self.prompt_builder.with_grounding_enforcement()
+            # Add provenance context if registry has observations
+            if self.provenance_registry:
+                self.prompt_builder.with_provenance_context(self.provenance_registry)
+
         # Add skill content if available
         if self._current_skill:
             self.prompt_builder.with_skill(self._current_skill)
@@ -288,13 +336,17 @@ class ProblemSolvingAgent:
             skill_name = self._current_skill.name
             if skill_name == "calculation":
                 self.prompt_builder.with_component("calculation")
-                self.prompt_builder.with_output_format("calculation")
+                # Only override output format if grounding is disabled
+                if not self.enable_grounding:
+                    self.prompt_builder.with_output_format("calculation")
             elif skill_name == "research":
                 self.prompt_builder.with_component("research")
-                self.prompt_builder.with_output_format("research")
+                if not self.enable_grounding:
+                    self.prompt_builder.with_output_format("research")
             elif skill_name == "problem_decomposition":
                 self.prompt_builder.with_component("thinking")
-                self.prompt_builder.with_output_format("decomposition")
+                if not self.enable_grounding:
+                    self.prompt_builder.with_output_format("decomposition")
             elif skill_name == "clarification":
                 self.prompt_builder.with_component("clarification")
 
@@ -325,11 +377,16 @@ class ProblemSolvingAgent:
             # Provide all tools
             return self.tool_registry.get_all()
 
-    def _execute_tool_call(self, tool_call: Any) -> str:
+    def _execute_tool_call(
+        self,
+        tool_call: Any,
+        cognitive_state: CognitiveState | None = None,
+    ) -> str:
         """Execute a tool call and display results.
 
         Args:
             tool_call: Tool call from API response.
+            cognitive_state: Optional cognitive state to update with observation info.
 
         Returns:
             Tool execution result.
@@ -344,8 +401,20 @@ class ProblemSolvingAgent:
         args_display = ", ".join(f'{k}="{v}"' for k, v in arguments.items())
         print(f"→ {function_name}({args_display})")
 
-        # Execute the tool
-        result = self.tool_registry.execute(function_name, arguments)
+        # Execute the tool (returns ExecutionResult with provenance)
+        execution_result = self.tool_registry.execute(function_name, arguments)
+
+        # Record observation if grounding is enabled
+        if self.enable_grounding and self.provenance_registry:
+            if execution_result.observation:
+                self.provenance_registry.add_observation(execution_result.observation)
+
+                # v0.0.4: Also update cognitive state with observation info
+                if cognitive_state:
+                    cognitive_state.record_observation(execution_result.observation.confidence)
+
+        # Get content for display and return
+        result = execution_result.content
         print(f"  结果: {result[:200]}{'...' if len(result) > 200 else ''}\n")
 
         return result
@@ -463,3 +532,57 @@ class ProblemSolvingAgent:
     def session_id(self) -> str:
         """Get the current session ID."""
         return self._session_id
+
+    def _generate_grounded_answer(self, raw_answer: str) -> str:
+        """Generate a grounded answer with provenance tracking.
+
+        Args:
+            raw_answer: The raw LLM-generated answer.
+
+        Returns:
+            Answer with provenance information if grounding is enabled.
+        """
+        if not self.enable_grounding or not self.grounded_generator:
+            return raw_answer
+
+        if not self.provenance_registry:
+            return raw_answer
+
+        # Generate grounded answer
+        grounded = self.grounded_generator.generate(
+            raw_answer=raw_answer,
+            registry=self.provenance_registry,
+        )
+
+        # Return formatted output if degraded, otherwise just the content
+        if grounded.degradation_level.value > 1:  # Not FULL_ANSWER
+            return grounded.to_formatted_output()
+
+        return grounded.content
+
+    def get_provenance_summary(self) -> str | None:
+        """Get a summary of the current provenance tracking.
+
+        Returns:
+            Provenance summary string, or None if grounding is disabled.
+        """
+        if not self.enable_grounding or not self.provenance_registry:
+            return None
+
+        if not self.grounded_generator:
+            return None
+
+        return self.grounded_generator.format_provenance_summary(
+            self.provenance_registry
+        )
+
+    def get_observation_count(self) -> int:
+        """Get the number of observations recorded.
+
+        Returns:
+            Number of observations, or 0 if grounding is disabled.
+        """
+        if not self.provenance_registry:
+            return 0
+        return self.provenance_registry.get_observation_count()
+

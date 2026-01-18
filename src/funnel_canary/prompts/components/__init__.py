@@ -1,5 +1,7 @@
 """Prompt components for modular prompt building."""
 
+from .grounding import GROUNDING_COMPONENT, PROVENANCE_CONTEXT_TEMPLATE
+
 THINKING_COMPONENT = """
 ## 思考框架
 
@@ -40,3 +42,12 @@ CALCULATION_COMPONENT = """
 - 逐步展示计算过程
 - 验证结果的合理性
 """
+
+__all__ = [
+    "THINKING_COMPONENT",
+    "CLARIFICATION_COMPONENT",
+    "RESEARCH_COMPONENT",
+    "CALCULATION_COMPONENT",
+    "GROUNDING_COMPONENT",
+    "PROVENANCE_CONTEXT_TEMPLATE",
+]

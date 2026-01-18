@@ -1,9 +1,11 @@
 """Base classes for the tool system."""
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Callable, Protocol
 
 from ..cognitive.safety import ToolRisk
+from ..provenance import Observation, ObservationType
 
 
 @dataclass
@@ -14,6 +16,65 @@ class ToolParameter:
     type: str
     description: str
     required: bool = True
+
+
+@dataclass
+class ToolResult:
+    """Result of a tool execution with provenance information.
+
+    Wraps the raw result with an Observation for provenance tracking.
+    """
+
+    content: str                    # The raw result content
+    observation: Observation        # Provenance observation
+    success: bool = True            # Whether execution succeeded
+    error_message: str | None = None  # Error message if failed
+
+    @classmethod
+    def from_success(
+        cls,
+        content: str,
+        tool_name: str,
+        confidence: float = 1.0,
+        ttl_seconds: int | None = None,
+        scope: str = "",
+        metadata: dict[str, Any] | None = None,
+    ) -> "ToolResult":
+        """Create a successful result with observation."""
+        observation = Observation(
+            content=content[:500],  # Limit stored content
+            source_type=ObservationType.TOOL_RETURN,
+            source_id=tool_name,
+            timestamp=datetime.now(),
+            confidence=confidence,
+            scope=scope,
+            ttl_seconds=ttl_seconds,
+            metadata=metadata or {},
+        )
+        return cls(content=content, observation=observation, success=True)
+
+    @classmethod
+    def from_error(
+        cls,
+        error_message: str,
+        tool_name: str,
+    ) -> "ToolResult":
+        """Create a failed result with low-confidence observation."""
+        observation = Observation(
+            content=f"工具执行失败: {error_message}",
+            source_type=ObservationType.TOOL_RETURN,
+            source_id=tool_name,
+            timestamp=datetime.now(),
+            confidence=0.0,  # No confidence in failed result
+            scope="error",
+            metadata={"error": error_message},
+        )
+        return cls(
+            content=error_message,
+            observation=observation,
+            success=False,
+            error_message=error_message,
+        )
 
 
 @dataclass
@@ -55,9 +116,14 @@ class ToolMetadata:
 
 
 class ToolExecutor(Protocol):
-    """Protocol for tool execution functions."""
+    """Protocol for tool execution functions.
 
-    def __call__(self, **kwargs: Any) -> str: ...
+    Tools can return either:
+    - str: Legacy simple string result
+    - ToolResult: Result with provenance information (v0.0.4)
+    """
+
+    def __call__(self, **kwargs: Any) -> str | ToolResult: ...
 
 
 @dataclass
