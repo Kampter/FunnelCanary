@@ -1,12 +1,30 @@
 # FunnelCanary
 
-基于第一性原理思维的 AI Agent，帮助用户系统性解决问题。
+基于第一性原理思维的 AI Agent，帮助用户系统性解决问题。v0.0.4 引入反幻觉系统，确保输出可追溯、可验证。
 
-## v0.0.3 功能
+## v0.0.4 核心特性
 
-**ProblemSolvingAgent** - 使用闭环方法解决问题的智能代理
+### 反幻觉系统 (Anti-Hallucination)
 
-### 核心特性
+基于四条公理构建的反幻觉系统：
+
+| 公理 | 原则 | 实现 |
+|------|------|------|
+| **A** | 正确性来自"世界状态" | 事实必须有观测支撑 |
+| **B** | 世界状态只能通过权威观测进入 | 工具/用户/规则三类来源 |
+| **C** | 从观测到结论必须可审计 | 完整的推导链追踪 |
+| **D** | 不可验证部分必须显式降级 | 四级降级机制 |
+
+### 降级机制
+
+| 级别 | 条件 | 输出 |
+|------|------|------|
+| `FULL_ANSWER` | 高置信度 + 足够观测 | 完整回答 |
+| `PARTIAL_WITH_UNCERTAINTY` | 中置信度 + 部分观测 | 带不确定性说明 |
+| `REQUEST_MORE_INFO` | 低置信度 | 请求更多信息 |
+| `REFUSE` | 无有效观测 | 拒绝回答 |
+
+### 其他核心功能
 
 - **工具调用循环** - 自动调用工具获取信息、执行操作
 - **认知状态系统** - 追踪分析进度，智能决策下一步策略
@@ -17,12 +35,12 @@
 
 ### 可用工具
 
-| 工具 | 功能 |
-|------|------|
-| `web_search` | 搜索互联网获取最新信息 |
-| `read_url` | 读取指定网页内容 |
-| `ask_user` | 向用户请求澄清信息 |
-| `python_exec` | 执行Python代码并返回结果 |
+| 工具 | 功能 | TTL | 置信度 |
+|------|------|-----|--------|
+| `web_search` | 搜索互联网获取最新信息 | 1小时 | 100% |
+| `read_url` | 读取指定网页内容 | 2小时 | 100% |
+| `ask_user` | 向用户请求澄清信息 | 永久 | 80% |
+| `python_exec` | 执行Python代码并返回结果 | 永久 | 100% |
 
 ## 安装
 
@@ -57,23 +75,62 @@ uv run python main.py "帮我分析这个网页 https://example.com"
 uv run python main.py "我应该学React还是Vue"
 ```
 
-### 输出示例
+### 输出示例 (v0.0.4 有据输出格式)
 
 ```
-【问题理解】
-- 目标状态：...
-- 当前状态：...
-- 差距：...
+【观测数据】
+- 来源：web_search
+- 内容：关键搜索结果...
+- 时效：1小时内有效
 
-【分析过程】
-...
+【推理过程】
+1. 基于 [观测X]，可以确定...
+2. 结合 [观测Y]，进一步推断...
 
-【执行】
-→ web_search(query="...")
-  结果: ...
+【置信度评估】
+- ✅ 高置信度：有直接观测支持的部分
+- ⚠️ 推测/常识：无直接证据的部分
+- ❓ 未找到信息：搜索失败的部分
 
 【答案】
-...
+...最终答案，区分事实与推断...
+
+【信息局限性】
+- 时效性、范围限制等说明
+```
+
+## 系统架构
+
+```
+ProblemSolvingAgent
+├── Provenance System (反幻觉系统) [v0.0.4]
+│   ├── ProvenanceRegistry  # 观测与声明注册
+│   ├── Observation         # 权威观测记录
+│   ├── Claim              # 可审计声明
+│   ├── ClaimExtractor     # 声明提取器
+│   └── GroundedAnswerGenerator  # 有据答案生成
+├── Cognitive System (策略决策)
+│   ├── CognitiveState      # 认知状态追踪
+│   ├── StrategyGate        # 策略门控 (含观测评估)
+│   └── MinimalCommitmentPolicy  # 安全策略
+├── Context Management (上下文管理)
+│   ├── ContextManager      # 滑动窗口管理
+│   └── Summarizer          # 消息摘要
+├── Memory System (记忆系统)
+│   ├── MemoryStore         # 持久化存储
+│   ├── Fact                # 事实记录
+│   └── SessionSummary      # 会话摘要
+├── Skill System (技能系统)
+│   ├── SkillRegistry       # 技能注册
+│   └── SkillLoader         # 动态加载
+├── Tool System (工具系统)
+│   ├── ToolRegistry        # 工具注册
+│   ├── ToolResult          # 带溯源的工具结果
+│   └── Tools: web_search, read_url, ask_user, python_exec
+└── Prompt System (提示词系统)
+    ├── PromptBuilder       # 模块化提示词构建
+    ├── GroundingComponent  # 反幻觉提示组件
+    └── GroundedFormat      # 有据输出格式
 ```
 
 ## 项目结构
@@ -87,27 +144,48 @@ FunnelCanary/
 │   ├── __init__.py
 │   ├── agent.py              # ProblemSolvingAgent 核心
 │   ├── config.py             # 配置管理
-│   ├── prompts.py            # 提示词模板
-│   ├── tools.py              # 工具实现
 │   ├── cognitive/            # 认知状态系统
-│   │   ├── state.py          # 认知状态
-│   │   ├── strategy.py       # 策略决策
+│   │   ├── state.py          # 认知状态 (含观测追踪)
+│   │   ├── strategy.py       # 策略决策 (含观测评估)
 │   │   └── safety.py         # 安全策略
 │   ├── context/              # 上下文管理
 │   │   ├── manager.py        # 上下文管理器
 │   │   └── summarizer.py     # 消息摘要
 │   ├── memory/               # 持久化记忆
 │   │   └── store.py          # 记忆存储
+│   ├── provenance/           # 反幻觉溯源系统 [v0.0.4]
+│   │   ├── __init__.py       # 模块导出
+│   │   ├── models.py         # Observation, Claim, ProvenanceRegistry
+│   │   ├── extractor.py      # 声明提取器
+│   │   └── generator.py      # 有据答案生成器
 │   ├── skills/               # 技能系统
 │   │   ├── registry.py       # 技能注册
 │   │   └── loader.py         # 动态加载
 │   ├── tools/                # 工具系统
+│   │   ├── base.py           # Tool, ToolResult 基类
 │   │   ├── registry.py       # 工具注册
 │   │   └── categories/       # 工具分类
+│   │       ├── web.py        # web_search, read_url
+│   │       ├── compute.py    # python_exec
+│   │       └── interaction.py # ask_user
 │   └── prompts/              # 提示词模块
-│       └── builder.py        # 提示词构建
+│       ├── builder.py        # 提示词构建
+│       ├── components/       # 提示词组件
+│       │   └── grounding.py  # 反幻觉组件 [v0.0.4]
+│       └── output_formats/   # 输出格式
+│           └── grounded.py   # 有据输出格式 [v0.0.4]
 └── tests/
     └── stability_test_report.md  # 稳定性测试报告
+```
+
+## 配置
+
+通过 `.env` 文件配置：
+
+```bash
+OPENAI_API_KEY=your_api_key    # Required - API密钥
+OPENAI_BASE_URL=https://...    # Optional - 自定义API地址
+MODEL_NAME=gpt-4               # Optional - 模型名称
 ```
 
 ## 稳定性测试
@@ -126,7 +204,23 @@ v0.0.3 通过了完整的稳定性测试：
 
 ## 版本历史
 
-### v0.0.3 (Current)
+### v0.0.4 (Current)
+- **反幻觉系统** (Anti-Hallucination)
+  - 溯源系统 (Provenance System)
+  - 观测追踪 (Observation Tracking with TTL)
+  - 可审计声明 (Auditable Claims)
+  - 四级降级机制 (Degradation Levels)
+- **提示词增强** (Prompt Enhancement)
+  - 事实来源原则 (Grounding Component)
+  - 有据输出格式 (Grounded Output Format)
+- **工具系统增强** (Tool System)
+  - ToolResult 带溯源信息
+  - TTL 过期配置支持
+- **认知系统增强** (Cognitive Enhancement)
+  - 观测状态追踪
+  - 基于观测的策略决策
+
+### v0.0.3
 - 稳定性测试通过 (20/20)
 - 完善错误处理机制
 - 认知状态系统优化
