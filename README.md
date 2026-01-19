@@ -1,38 +1,24 @@
 # FunnelCanary
 
-基于第一性原理思维的 AI Agent，帮助用户系统性解决问题。v0.0.6 扩展 Agent SDK 兼容工具，增强文件操作与系统执行能力。
+基于第一性原理思维的 AI Agent，帮助用户系统性解决问题。v0.0.7 新增完整测试框架，覆盖工具边界、系统集成和 Agent 行为测试。
 
-## v0.0.6 核心特性
+## v0.0.7 核心特性
 
-### Agent SDK 兼容工具
+### 完整测试框架
 
-借鉴 Anthropic Agent SDK 工具设计，新增三个核心工具：
+三层测试体系确保系统质量：
 
-| 工具 | 分类 | 风险级别 | 说明 |
-|------|------|----------|------|
-| `Read` | filesystem | SAFE | 读取本地文件内容（最大 100KB） |
-| `Glob` | filesystem | SAFE | 按模式搜索文件（支持 `**/*.py` 等通配符） |
-| `Bash` | compute | MEDIUM | 执行 Shell 命令（含安全黑名单） |
+| 层次 | 类型 | 说明 | 用例数 |
+|------|------|------|--------|
+| 1 | 单元测试 | 工具边界测试 | 60+ |
+| 2 | 集成测试 | 系统间交互 | 15+ |
+| 3 | Agent 测试 | 端到端场景 | 15+ |
 
-### 工具设计七大原则
+### 测试覆盖范围
 
-| 原则 | 说明 |
-|------|------|
-| **能力对齐** | 每个工具解决 LLM 的某个根本能力缺陷 |
-| **最小权限** | 给予恰好必需的权限，不多不少 |
-| **可观测性** | 每次调用产生可追踪的观测记录 |
-| **接口清晰** | 从描述就能理解何时使用 |
-| **结果流通** | 工具结果回流到决策循环 |
-| **分类聚类** | 按功能、权限、调度需求分组 |
-| **降级机制** | 不可靠结果必须显式标记并降级使用 |
-
-### Bash 安全机制
-
-危险命令黑名单保护：
-- `rm -rf /`, `rm -rf ~` - 防止删除系统/用户目录
-- `dd if=`, `mkfs` - 防止磁盘破坏
-- `shutdown`, `reboot` - 防止系统关机
-- Fork bomb 等恶意模式
+- **工具测试**: Read, Glob, Bash, python_exec, web_search, read_url, ask_user
+- **系统测试**: Provenance + Cognitive 集成, 错误恢复
+- **Agent 测试**: 任务完成度, 工具调用正确性, 降级机制
 
 ## 反幻觉系统 (v0.0.4)
 
@@ -81,9 +67,35 @@
 # 安装依赖
 uv sync
 
+# 安装开发依赖（包含测试）
+uv sync --dev
+
 # 配置环境变量
 cp .env.example .env
 # 编辑 .env 填入 API_KEY 和 BASE_URL
+```
+
+## 测试
+
+```bash
+# 运行所有测试
+uv run pytest
+
+# 按层次运行
+uv run pytest -m unit          # 单元测试
+uv run pytest -m integration   # 集成测试
+uv run pytest -m agent         # Agent 测试
+
+# 运行特定工具测试
+uv run pytest tests/unit/tools/test_read.py -v
+
+# 带覆盖率报告
+uv run pytest --cov=src/funnel_canary --cov-report=html
+
+# 查看测试文档
+cat tests/docs/TEST_PLAN.md
+cat tests/docs/TEST_CASES.md
+cat tests/docs/AGENT_TEST_GUIDE.md
 ```
 
 ## 使用
@@ -238,7 +250,18 @@ v0.0.3 通过了完整的稳定性测试：
 
 ## 版本历史
 
-### v0.0.6 (Current)
+### v0.0.7 (Current)
+- **完整测试框架** (Comprehensive Testing Framework)
+  - 单元测试: 60+ 工具边界测试用例
+  - 集成测试: Provenance + Cognitive 系统交互
+  - Agent 测试: 任务完成度、工具正确性、降级机制
+- **测试文档** (Test Documentation)
+  - TEST_PLAN.md, TEST_CASES.md, AGENT_TEST_GUIDE.md
+- **pytest 配置**
+  - markers: unit, integration, agent, tools, slow
+  - 共享 fixtures, coverage 配置
+
+### v0.0.6
 - **Agent SDK 兼容工具** (Agent SDK Compatible Tools)
   - `Read`: 读取本地文件内容（最大 100KB）
   - `Glob`: 按模式搜索文件（支持 `**/*.py` 等通配符）

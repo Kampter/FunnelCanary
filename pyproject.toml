@@ -1,6 +1,6 @@
 [project]
 name = "funnel-canary"
-version = "0.0.4"
+version = "0.0.7"
 description = "AI Agent for closed-loop problem solving with anti-hallucination"
 requires-python = ">=3.11"
 dependencies = [
@@ -10,6 +10,42 @@ dependencies = [
     "pyyaml>=6.0.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.11.0",
+    "pytest-timeout>=2.1.0",
+    "pytest-asyncio>=0.21.0",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short -ra"
+markers = [
+    "unit: Unit tests",
+    "integration: Integration tests",
+    "agent: Agent-level tests",
+    "tools: Tool-related tests",
+    "slow: Slow tests (network/external APIs)",
+]
+
+[tool.coverage.run]
+source = ["src/funnel_canary"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 55  # Tool-specific coverage is 80%+, overall target for v0.0.8
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]

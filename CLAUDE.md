@@ -8,13 +8,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Install dependencies
 uv sync
 
+# Install dev dependencies (for testing)
+uv sync --dev
+
 # Run the CLI
 uv run python main.py "问题描述"
+
+# Run tests
+uv run pytest                          # All tests
+uv run pytest -m unit                  # Unit tests only
+uv run pytest -m integration           # Integration tests only
+uv run pytest -m agent                 # Agent tests only
+uv run pytest --cov=src/funnel_canary  # With coverage
 ```
 
-## Architecture (v0.0.6)
+## Architecture (v0.0.7)
 
-FunnelCanary is a CLI-based AI Agent that solves problems using first principles thinking with a closed-loop approach. v0.0.6 extends the tool system with Agent SDK compatible tools.
+FunnelCanary is a CLI-based AI Agent that solves problems using first principles thinking with a closed-loop approach. v0.0.7 adds comprehensive testing framework.
 
 ### Core Flow
 
@@ -182,7 +192,24 @@ git push origin v0.0.4
 
 ## Version History
 
-### v0.0.6 (Current)
+### v0.0.7 (Current)
+- 完整测试框架 (Comprehensive Testing Framework)
+  - 单元测试 (Unit Tests): 60+ 工具边界测试用例
+  - 集成测试 (Integration Tests): 系统间交互测试
+  - Agent 测试 (Agent Tests): 端到端场景测试
+- 测试覆盖 (Test Coverage)
+  - Read, Glob, Bash, python_exec, web_search, read_url, ask_user
+  - Provenance + Cognitive 系统集成
+  - 任务完成度、工具调用正确性、降级机制
+- 测试文档 (Test Documentation)
+  - TEST_PLAN.md: 测试计划
+  - TEST_CASES.md: 测试用例清单
+  - AGENT_TEST_GUIDE.md: Agent 测试指南
+- pytest 配置与 fixtures
+  - 支持 markers: unit, integration, agent, tools, slow
+  - 共享 fixtures for temp files, provenance, mocks
+
+### v0.0.6
 - Agent SDK 兼容工具扩展 (Agent SDK Compatible Tools)
   - `Read`: 读取本地文件内容
   - `Glob`: 按模式搜索文件（支持 **/*.py 等通配符）
