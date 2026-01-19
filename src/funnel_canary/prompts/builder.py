@@ -12,7 +12,11 @@ from .base import (
 from .components import (
     CALCULATION_COMPONENT,
     CLARIFICATION_COMPONENT,
+    COMPARATIVE_ANALYSIS_COMPONENT,
+    CREATIVE_GENERATION_COMPONENT,
+    CRITICAL_THINKING_COMPONENT,
     GROUNDING_COMPONENT,
+    LEARNING_ASSISTANT_COMPONENT,
     PROVENANCE_CONTEXT_TEMPLATE,
     RESEARCH_COMPONENT,
     THINKING_COMPONENT,
@@ -54,7 +58,8 @@ class PromptBuilder:
 
         Args:
             component_name: One of 'thinking', 'clarification', 'research',
-                          'calculation', 'grounding'.
+                          'calculation', 'grounding', 'critical', 'comparative',
+                          'creative', 'learning'.
 
         Returns:
             Self for chaining.
@@ -65,6 +70,11 @@ class PromptBuilder:
             "research": RESEARCH_COMPONENT,
             "calculation": CALCULATION_COMPONENT,
             "grounding": GROUNDING_COMPONENT,
+            # v0.0.5: New skill components
+            "critical": CRITICAL_THINKING_COMPONENT,
+            "comparative": COMPARATIVE_ANALYSIS_COMPONENT,
+            "creative": CREATIVE_GENERATION_COMPONENT,
+            "learning": LEARNING_ASSISTANT_COMPONENT,
         }
         if component_name in components_map:
             self._components.append(components_map[component_name])

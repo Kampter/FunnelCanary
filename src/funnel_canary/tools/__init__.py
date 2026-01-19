@@ -9,7 +9,7 @@ This module provides a registry-based tool system with:
 """
 
 from .base import Tool, ToolMetadata, ToolParameter, ToolResult, tool
-from .categories import COMPUTE_TOOLS, INTERACTION_TOOLS, WEB_TOOLS
+from .categories import COMPUTE_TOOLS, FILESYSTEM_TOOLS, INTERACTION_TOOLS, WEB_TOOLS
 from .registry import ExecutionResult, ToolRegistry
 
 
@@ -28,6 +28,8 @@ def create_default_registry() -> ToolRegistry:
         registry.register(tool_instance)
     for tool_instance in COMPUTE_TOOLS:
         registry.register(tool_instance)
+    for tool_instance in FILESYSTEM_TOOLS:
+        registry.register(tool_instance)
 
     return registry
 
@@ -44,4 +46,5 @@ __all__ = [
     "WEB_TOOLS",
     "INTERACTION_TOOLS",
     "COMPUTE_TOOLS",
+    "FILESYSTEM_TOOLS",
 ]

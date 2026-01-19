@@ -1,10 +1,40 @@
 # FunnelCanary
 
-基于第一性原理思维的 AI Agent，帮助用户系统性解决问题。v0.0.4 引入反幻觉系统，确保输出可追溯、可验证。
+基于第一性原理思维的 AI Agent，帮助用户系统性解决问题。v0.0.6 扩展 Agent SDK 兼容工具，增强文件操作与系统执行能力。
 
-## v0.0.4 核心特性
+## v0.0.6 核心特性
 
-### 反幻觉系统 (Anti-Hallucination)
+### Agent SDK 兼容工具
+
+借鉴 Anthropic Agent SDK 工具设计，新增三个核心工具：
+
+| 工具 | 分类 | 风险级别 | 说明 |
+|------|------|----------|------|
+| `Read` | filesystem | SAFE | 读取本地文件内容（最大 100KB） |
+| `Glob` | filesystem | SAFE | 按模式搜索文件（支持 `**/*.py` 等通配符） |
+| `Bash` | compute | MEDIUM | 执行 Shell 命令（含安全黑名单） |
+
+### 工具设计七大原则
+
+| 原则 | 说明 |
+|------|------|
+| **能力对齐** | 每个工具解决 LLM 的某个根本能力缺陷 |
+| **最小权限** | 给予恰好必需的权限，不多不少 |
+| **可观测性** | 每次调用产生可追踪的观测记录 |
+| **接口清晰** | 从描述就能理解何时使用 |
+| **结果流通** | 工具结果回流到决策循环 |
+| **分类聚类** | 按功能、权限、调度需求分组 |
+| **降级机制** | 不可靠结果必须显式标记并降级使用 |
+
+### Bash 安全机制
+
+危险命令黑名单保护：
+- `rm -rf /`, `rm -rf ~` - 防止删除系统/用户目录
+- `dd if=`, `mkfs` - 防止磁盘破坏
+- `shutdown`, `reboot` - 防止系统关机
+- Fork bomb 等恶意模式
+
+## 反幻觉系统 (v0.0.4)
 
 基于四条公理构建的反幻觉系统：
 
@@ -35,12 +65,15 @@
 
 ### 可用工具
 
-| 工具 | 功能 | TTL | 置信度 |
-|------|------|-----|--------|
-| `web_search` | 搜索互联网获取最新信息 | 1小时 | 100% |
-| `read_url` | 读取指定网页内容 | 2小时 | 100% |
-| `ask_user` | 向用户请求澄清信息 | 永久 | 80% |
-| `python_exec` | 执行Python代码并返回结果 | 永久 | 100% |
+| 工具 | 分类 | TTL | 风险 | 说明 |
+|------|------|-----|------|------|
+| `web_search` | web | 1h | SAFE | 搜索互联网获取最新信息 |
+| `read_url` | web | 2h | SAFE | 读取指定网页内容 |
+| `ask_user` | interaction | - | SAFE | 向用户请求澄清信息 |
+| `python_exec` | compute | - | SAFE | 执行Python代码（沙箱环境） |
+| `Read` | filesystem | - | SAFE | 读取本地文件内容 |
+| `Glob` | filesystem | - | SAFE | 按模式搜索文件 |
+| `Bash` | compute | - | MEDIUM | 执行 Shell 命令 |
 
 ## 安装
 
@@ -126,7 +159,7 @@ ProblemSolvingAgent
 ├── Tool System (工具系统)
 │   ├── ToolRegistry        # 工具注册
 │   ├── ToolResult          # 带溯源的工具结果
-│   └── Tools: web_search, read_url, ask_user, python_exec
+│   └── Tools: web_search, read_url, ask_user, python_exec, Read, Glob, Bash
 └── Prompt System (提示词系统)
     ├── PromptBuilder       # 模块化提示词构建
     ├── GroundingComponent  # 反幻觉提示组件
@@ -166,8 +199,9 @@ FunnelCanary/
 │   │   ├── registry.py       # 工具注册
 │   │   └── categories/       # 工具分类
 │   │       ├── web.py        # web_search, read_url
-│   │       ├── compute.py    # python_exec
-│   │       └── interaction.py # ask_user
+│   │       ├── compute.py    # python_exec, Bash
+│   │       ├── interaction.py # ask_user
+│   │       └── filesystem.py # Read, Glob [v0.0.6]
 │   └── prompts/              # 提示词模块
 │       ├── builder.py        # 提示词构建
 │       ├── components/       # 提示词组件
@@ -204,7 +238,27 @@ v0.0.3 通过了完整的稳定性测试：
 
 ## 版本历史
 
-### v0.0.4 (Current)
+### v0.0.6 (Current)
+- **Agent SDK 兼容工具** (Agent SDK Compatible Tools)
+  - `Read`: 读取本地文件内容（最大 100KB）
+  - `Glob`: 按模式搜索文件（支持 `**/*.py` 等通配符）
+  - `Bash`: 执行 Shell 命令（含安全黑名单保护）
+- **新增 filesystem 工具分类**
+- **技能-工具映射增强**
+  - code_analysis: + Read, Glob, Bash
+  - deep_research: + Read, Glob
+  - planning: + Glob, Bash
+- **工具设计遵循七大原则**
+
+### v0.0.5
+- **基于人类能力的技能扩展** (Human-Capability-Based Skills)
+  - critical_thinking, comparative_analysis, deep_research
+  - summarization, learning_assistant, decision_support
+  - creative_generation, code_analysis, planning, reflection
+- **提示词组件扩展** (Prompt Components)
+- **技能映射增强** (Skill Mapping)
+
+### v0.0.4
 - **反幻觉系统** (Anti-Hallucination)
   - 溯源系统 (Provenance System)
   - 观测追踪 (Observation Tracking with TTL)

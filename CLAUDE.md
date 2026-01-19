@@ -12,9 +12,9 @@ uv sync
 uv run python main.py "问题描述"
 ```
 
-## Architecture (v0.0.4)
+## Architecture (v0.0.6)
 
-FunnelCanary is a CLI-based AI Agent that solves problems using first principles thinking with a closed-loop approach. v0.0.4 adds an anti-hallucination system based on provenance tracking.
+FunnelCanary is a CLI-based AI Agent that solves problems using first principles thinking with a closed-loop approach. v0.0.6 extends the tool system with Agent SDK compatible tools.
 
 ### Core Flow
 
@@ -49,7 +49,7 @@ ProblemSolvingAgent
 ├── Tool System (工具系统)
 │   ├── ToolRegistry        # 工具注册
 │   ├── ToolResult          # 带溯源的工具结果
-│   └── Tools: web_search, read_url, ask_user, python_exec
+│   └── Tools: web_search, read_url, ask_user, python_exec, Read, Glob, Bash
 └── Prompt System (提示词系统)
     ├── PromptBuilder       # 模块化提示词构建
     ├── GroundingComponent  # 反幻觉提示组件
@@ -69,6 +69,23 @@ ProblemSolvingAgent
 | Tools | `src/funnel_canary/tools/` | 工具注册与执行 |
 | Prompts | `src/funnel_canary/prompts/` | 模块化提示词 |
 | Config | `src/funnel_canary/config.py` | 配置管理 |
+
+### Human-Capability-Based Skills (v0.0.5)
+
+Skills mapped from human cognitive abilities:
+
+| Skill | Human Ability | Triggers | Tools |
+|-------|--------------|----------|-------|
+| `critical_thinking` | 批判性思维 | 验证、证据、可信、真假 | web_search, read_url |
+| `comparative_analysis` | 对比分析 | 比较、对比、区别、优劣 | web_search, read_url |
+| `deep_research` | 深度研究 | 深入、详细、全面、调研 | web_search, read_url, Read, Glob |
+| `summarization` | 摘要总结 | 总结、概括、要点、摘要 | web_search, read_url |
+| `learning_assistant` | 学习辅导 | 学习、教我、解释、入门 | web_search, ask_user |
+| `decision_support` | 决策支持 | 决定、选择、建议、推荐 | web_search, ask_user |
+| `creative_generation` | 创意生成 | 创意、想法、头脑风暴 | python_exec, ask_user |
+| `code_analysis` | 代码分析 | 代码、分析、调试、解读 | python_exec, Read, Glob, Bash |
+| `planning` | 规划执行 | 计划、规划、步骤、安排 | ask_user, Glob, Bash |
+| `reflection` | 反思回顾 | 回顾、反思、总结经验 | ask_user |
 
 ### Anti-Hallucination System (v0.0.4)
 
@@ -96,12 +113,15 @@ generator.generate(raw_answer, registry) → GroundedAnswer
 
 ### Tools Available
 
-| Tool | Function | TTL | Description |
-|------|----------|-----|-------------|
-| `web_search` | 网络搜索 | 1h | 搜索互联网获取信息 |
-| `read_url` | 读取网页 | 2h | 获取指定URL内容 |
-| `ask_user` | 询问用户 | - | 向用户请求澄清信息 |
-| `python_exec` | 执行代码 | - | 运行Python代码并返回结果 |
+| Tool | Category | TTL | Risk | Description |
+|------|----------|-----|------|-------------|
+| `web_search` | web | 1h | SAFE | 搜索互联网获取信息 |
+| `read_url` | web | 2h | SAFE | 获取指定URL内容 |
+| `ask_user` | interaction | - | SAFE | 向用户请求澄清信息 |
+| `python_exec` | compute | - | SAFE | 运行Python代码（沙箱环境） |
+| `Read` | filesystem | - | SAFE | 读取本地文件内容 |
+| `Glob` | filesystem | - | SAFE | 按模式搜索文件 |
+| `Bash` | compute | - | MEDIUM | 执行 Shell 命令 |
 
 ### Configuration (via `.env`)
 
@@ -162,7 +182,41 @@ git push origin v0.0.4
 
 ## Version History
 
-### v0.0.4 (Current)
+### v0.0.6 (Current)
+- Agent SDK 兼容工具扩展 (Agent SDK Compatible Tools)
+  - `Read`: 读取本地文件内容
+  - `Glob`: 按模式搜索文件（支持 **/*.py 等通配符）
+  - `Bash`: 执行 Shell 命令（含安全黑名单）
+- 新增 filesystem 工具分类
+- 技能-工具映射增强
+  - code_analysis: + Read, Glob, Bash
+  - deep_research: + Read, Glob
+  - planning: + Glob, Bash
+- 工具设计遵循七大原则
+  - 能力对齐、最小权限、可观测性
+  - 接口清晰、结果流通、分类聚类、降级机制
+
+### v0.0.5
+- 基于人类能力的技能扩展 (Human-Capability-Based Skills)
+  - critical_thinking: 批判性思维、事实核查
+  - comparative_analysis: 系统性对比分析
+  - deep_research: 深度研究与报告
+  - summarization: 摘要总结
+  - learning_assistant: 学习辅导
+  - decision_support: 决策支持
+  - creative_generation: 创意生成
+  - code_analysis: 代码分析
+  - planning: 规划执行
+  - reflection: 反思回顾
+- 提示词组件扩展 (Prompt Components)
+  - CRITICAL_THINKING_COMPONENT
+  - COMPARATIVE_ANALYSIS_COMPONENT
+  - CREATIVE_GENERATION_COMPONENT
+  - LEARNING_ASSISTANT_COMPONENT
+- 技能映射增强 (Skill Mapping)
+  - Agent 自动加载技能对应的 prompt 组件
+
+### v0.0.4
 - 反幻觉系统 (Anti-Hallucination)
   - 溯源系统 (Provenance System)
   - 观测追踪 (Observation Tracking)
