@@ -349,6 +349,27 @@ class ProblemSolvingAgent:
                     self.prompt_builder.with_output_format("decomposition")
             elif skill_name == "clarification":
                 self.prompt_builder.with_component("clarification")
+            # v0.0.5: New skill mappings
+            elif skill_name == "critical_thinking":
+                self.prompt_builder.with_component("critical")
+            elif skill_name == "comparative_analysis":
+                self.prompt_builder.with_component("comparative")
+            elif skill_name == "creative_generation":
+                self.prompt_builder.with_component("creative")
+            elif skill_name == "learning_assistant":
+                self.prompt_builder.with_component("learning")
+            elif skill_name == "deep_research":
+                self.prompt_builder.with_component("research")
+            elif skill_name == "summarization":
+                self.prompt_builder.with_component("thinking")
+            elif skill_name == "decision_support":
+                self.prompt_builder.with_component("thinking")
+            elif skill_name == "code_analysis":
+                self.prompt_builder.with_component("thinking")
+            elif skill_name == "planning":
+                self.prompt_builder.with_component("thinking")
+            elif skill_name == "reflection":
+                self.prompt_builder.with_component("thinking")
 
         # Add memory facts if available
         if self.memory:
