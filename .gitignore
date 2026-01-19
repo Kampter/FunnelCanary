@@ -40,3 +40,8 @@ Thumbs.db
 
 # FunnelCanary local data
 .funnel_canary/
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
